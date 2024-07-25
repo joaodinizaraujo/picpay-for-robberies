@@ -1,2 +1,2 @@
 # picpay-for-robberies
-A fake PicPay app so they don't steal your money!
+A fake PicPay Android app so they don't steal your money!
