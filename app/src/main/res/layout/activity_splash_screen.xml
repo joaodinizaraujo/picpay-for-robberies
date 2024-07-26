@@ -5,29 +5,17 @@
     android:id="@+id/main"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:onClick="setOnClickPix"
-    tools:context=".MainActivity">
+    android:background="#11C770"
+    tools:context=".SplashScreenActivity">
 
     <ImageView
-        android:id="@+id/imgHome"
+        android:id="@+id/imgSplashScreen"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:scaleType="fitXY"
-        tools:layout_editor_absoluteX="75dp"
-        tools:layout_editor_absoluteY="108dp"
-        tools:srcCompat="@tools:sample/avatars" />
-
-    <Button
-        android:id="@+id/btnPix"
-        android:layout_width="147dp"
-        android:layout_height="180dp"
-        android:background="@drawable/button_background"
-        android:onClick="setOnClickPix"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.0"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintVertical_bias="0.629" />
-
+        tools:srcCompat="@tools:sample/avatars" />
 </androidx.constraintlayout.widget.ConstraintLayout>
